@@ -1,0 +1,84 @@
+# Setup
+
+See [Intro to LangGraph](https://academy.langchain.com/courses/take/intro-to-langgraph/texts/58238105-getting-set-up)
+
+## Environment Variables
+
+> [!NOTE] About ENV File
+>
+> - Must add `.env` file in repo directory
+> - Must copy `.env` file to each module sub-directories
+
+## How to Setup Environment
+
+```{bash}
+# Clone repo
+git clone git@github.com:jah377/langchain-academy.git
+cd langchain-academy
+
+# Create environment from requirements.txt
+uv init
+uv add -r requirements.txt
+
+# Create jupyter kernel
+uv add ipykernel
+uv run python -m ipykernel install --user --name langchain-academy
+```
+
+## Ollama Setup
+
+See [Setting up Ollama](https://github.com/jah377/zettelkasten/blob/main/notes/langchain/20260619__LangChain-Setting-Up-Ollama.qmd)
+
+```{bash}
+uv add langchain_ollama
+```
+
+## LangSmith Studio Setup
+
+Must install `langgraph` in virtual environment to use `LangSmith Studio` for
+viewing and testing agent.
+
+```{bash}
+uv add "langgraph-cli[inmem]"
+```
+
+To run `langgraph`, must call `uv run langgraph dev` from inside one of the
+**module-{{i}}** subdirectories in the repo. Should see the following:
+
+> - 🚀 API: http://127.0.0.1:2024
+> - 🎨 Studio UI: https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024
+> - 📚 API Docs: http://127.0.0.1:2024/docs
+
+## Tavily Setup
+
+While `tavily` web-search tool worked using the `lca-lc-foundations` virtual
+environment, it did not work using the `langchain-academy` environment.
+
+```{bash}
+# Packages in `lca-lc-foundation` but missing from `langchain-academy`
+# Didn't resolve the issue
+uv add python-dotenv tavily-python tavily
+
+# Finally was able to get it to work
+uv add pip-system-certs
+```
+
+To test:
+
+```{python}
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from langchain_tavily import TavilySearch  # updated at 1.0
+
+tavily_search = TavilySearch(max_results=3)
+
+data = tavily_search.invoke({"query": "What is LangGraph?"})
+search_docs = data.get("results", data)
+
+
+from pprint import pprint
+
+pprint(search_docs)
+```

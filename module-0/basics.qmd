@@ -1,0 +1,130 @@
+---
+jupyter: python3
+---
+
+# LangChain Academy
+
+Welcome to LangChain Academy!
+
+## Context
+
+At LangChain, we aim to make it easy to build LLM applications. One type of LLM
+application you can build is an agent. There’s a lot of excitement around
+building agents because they can automate a wide range of tasks that were
+previously impossible.
+
+In practice though, it is incredibly difficult to build systems that reliably
+execute on these tasks. As we’ve worked with our users to put agents into
+production, we’ve learned that more control is often necessary. You might need
+an agent to always call a specific tool first or use different prompts based on
+its state.
+
+To tackle this problem, we’ve built [LangGraph](https://docs.langchain.com/oss/python/langgraph/overview).
+
+LangGraph a framework for building agent and multi-agent applications. Separate
+from the LangChain package, LangGraph’s core design philosophy is to help
+developers add better precision and control into agent workflows, suitable for
+the complexity of real-world systems.
+
+## Course Structure
+
+The course is structured as a set of modules, with each module focused on a
+particular theme related to LangGraph. You will see a folder for each module,
+which contains a series of notebooks. A video will accompany each notebook to
+help walk through the concepts, but the notebooks are also stand-alone, meaning
+that they contain explanations and can be viewed independently of the videos.
+Each module folder also contains a `studio` folder, which contains a set of
+graphs that can be loaded into LangSmith Studio, our IDE for buidling LangGraph
+applications.
+
+See [LangSmith Studio](https://docs.langchain.com/langsmith/quick-start-studio)
+
+## Setup Ollama for Example
+
+```{bash}
+# Start ollama server (runs on http://localhost:11434)
+ollama serve
+```
+
+## Chat models
+
+See standard [model parameters](https://docs.langchain.com/oss/python/langchain/models#parameters)
+
+Two of the most common are:
+
+- `model`: the name of the model
+- `temperature`: the sampling temperature
+
+`Temperature` controls the randomness or creativity of the model's output where
+low temperature (close to 0) is more deterministic and focused outputs. This is
+good for tasks requiring accuracy or factual responses. High temperature (close
+to 1) is good for creative tasks or generating varied responses.
+
+```{python}
+from langchain.chat_models import init_chat_model
+
+ollama_model = "llama3.2:1b"
+
+# Creates a ChatModel instance pointing to local ollama server
+# Ollama runs locally and does not require API keys
+model = init_chat_model(
+    ollama_model, model_provider="ollama", temperature=0, max_tokens=1.0
+)
+
+response = model.invoke("What's the capital of the Moon?")
+print(response.content)
+```
+
+Chat models in LangChain have a number of default methods. See [default
+methods](https://reference.langchain.com/python/langchain_core/runnables).
+
+For the most part, we'll be using:
+
+- [stream](https://docs.langchain.com/oss/python/langchain/models#stream): stream back chunks of the response
+- [invoke](https://docs.langchain.com/oss/python/langchain/models#invoke): call the chain on an input
+
+```{python}
+from langchain_core.messages import HumanMessage
+
+# Create a message
+msg = HumanMessage(content="Hello world", name="Lance")
+
+# Message list
+messages = [msg]
+
+# Invoke the model with a list of messages
+model.invoke(messages)
+```
+
+We get an `AIMessage` response. Also, note that we can just invoke a chat model
+with a string. When a string is passed in as input, it is converted to a
+`HumanMessage` and then passed to the underlying model.
+
+```{python}
+model.invoke("hello world")
+```
+
+## Search Tools
+
+You'll also see [Tavily](https://tavily.com/) in the README, which is a search
+engine optimized for LLMs and RAG, aimed at efficient, quick, and persistent
+search results. As mentioned, it's easy to sign up and offers a generous free
+tier. Some lessons (in Module 4) will use Tavily by default but, of course,
+other search tools can be used if you want to modify the code for yourself.
+
+```{python}
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from pprint import pprint
+
+from langchain_tavily import TavilySearch  # updated at 1.0
+
+tavily_search = TavilySearch(max_results=3)
+
+data = tavily_search.invoke({"query": "What is LangGraph?"})
+search_docs = data.get("results", data)
+
+pprint(search_docs)
+```
