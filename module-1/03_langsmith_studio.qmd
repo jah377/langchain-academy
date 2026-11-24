@@ -1,0 +1,22 @@
+---
+jupyter: python3
+---
+
+# Confirm LangSmith Studio Working Properly
+
+```{bash}
+# Go to directory containing files
+cd /Users/jon.harris/code/langchain-academy/module-1/studio/
+
+uv run langgraph dev
+```
+
+## Example: simple_graph.py
+
+The file `simple_graph.py` defines and compiles a simple graph. It is available
+for use in LangSmith because it is defined in
+[langgraph.json](./studio/langgraph.json).
+
+![Inspect Node Runtime](../assets/20261123-module1_03_simple_graph_langsmith_inspect_node_runtime.png)
+
+![Inspect Node Attributes](../assets/20261123-module1_03_langsmith_simple_graph_inspect_node_attributes.png)

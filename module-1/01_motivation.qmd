@@ -1,0 +1,137 @@
+---
+jupyter: python3
+---
+
+# Development Tools
+
+[LangChain](https://docs.langchain.com/) = application components
+[LangGraph](https://docs.langchain.com/oss/python/langgraph/overview) = application logic + orchestration
+[LangSmith](https://docs.langchain.com/langsmith/home) = platform for tracing, observing, evaluating LLM apps
+
+# Control Flow
+
+A **control flow** is the order in which a steps are executed in an LLM app
+
+1. Chain (you decide the path): Input -> Step 1 -> ... -> Step N -> output
+2. Agent (LLM decides): Input -> LLM -> ? (tool A / tool B / finish / loop back)
+
+## Chain
+
+A **chain** control flow is linear
+
+- Developer defines sequence of steps
+- Steps can include LLM calls
+
+### Examples
+
+**Retrieval-Augmented Generation (RAG)**
+
+- User Question -> Search document store -> put retrieved text into prompt -> LLM writes answer
+- Search always happens before the LLM call, even when question doesn't need it
+
+**Document Summarization Pipeline**
+
+- Load PDF -> Split into chunks -> LLM summarize chunks -> LLM combines summaries into 1 summary
+- Sequence of steps does not change, regardless of document
+
+**Customer Support Email Triage**
+
+- Receive Email -> LLM extracts structured fields -> Fields saved to DB -> LLM drafts reply
+- LLM called twice, but "flow" determines sequence of steps
+
+## Agent
+
+An **agent** control flow is non-linear
+
+- LLM decides the order of steps at runtime
+- Developer must define goal and available tools
+- LLM repeats a loop until the goal is met
+  - Pick an action -> look at result -> pick next action
+
+There are several types of Agents
+
+1. _Router_ = LLM makes one decision and picks one path from defined options
+2. _Tool-caller_= LLM repeats reason -> call tool -> look at results until done
+3. _Autonomous Multi-agent_ = several specialized agents work together
+   a. _Supervisor_ = manager agent hands out tasks to worker agents
+   b. _Network (swarm)_ = agents pass work directly to each other
+   c. _Hierarchical_ = supervisors manage teams that have their own supervisors
+4. _Human-in-the-loop_ = Agent layer; pause control flow for human approval
+
+### Examples
+
+**Customer Support Agent**
+
+- Goal = "My order hasn't arrived. Can you help?"
+- Tools = `lookup_order`, `track_shipment`, `issue_refund`, `escalate_to_human`
+- Possible sequence of steps
+  - LLM -> `lookup_order(customer_id)` -> order #881, shipped 10 days ago
+  - LLM -> `track_shipment(#881)` -> "lost in transit"
+  - LLM -> `issue_refund(#881)` -> refund approved
+  - LLM -> reply: "Your package was lost. We've issued a full refund"
+  - Stops
+
+**Research Assistant**
+
+- Goal = "Compare the populations of the capitals of France and Japan"
+- Tools = `web_search`, `read_webpage`
+- Possible sequence of steps
+  - LLM -> `web_search("capital of Japan")` -> Tokyo
+  - LLM -> `web_search("population of Paris")` -> ~2.1 million
+  - LLM -> `web_search("population of Tokyo")` -> results unclear
+  - LLM -> `read_webpage(tokyo_gov_stats_url)` -> ~14 million (city)
+  - LLM -> reply with comparison
+  - Stops
+
+# Foundational Concepts
+
+## How LLMs Work
+
+- _Chat models_ = LLM takes list of messages -> returns new message
+  - Models do not remember past calls
+  - Must recent conversation history for each call
+  - Possible to persist "state" of conversation
+
+- _Message Roles_
+  - System = instructions for the LLM
+  - Human = what the user says
+  - AI = LLM's replies
+  - Tools = the results of tool calls
+
+- _Tokens_ = small pieces of text that is read by LLM
+- _Context Window_ = size of text model can read at once
+  - Long conversations must be trimmed or compressed
+
+- _Tool-calling_ = LLM only asks for a tool to be run (tool + inputs)
+  - Code runs the tool and sends back results
+
+- _Structured-output_ = LLM to reply in a fixed format (eg. JSON)
+  - Router control flows rely on structured output to make clear decisions
+
+## LangChain Concepts
+
+- _Chat-Model Classes_ = one shared interface (eg. `ChatOpenAI`)
+  - Possible to switch LLM providers without re-writing code
+
+- _Message Classes_ = Python objedts for each message role
+  - Examples: `HumanMessage`, `AIMessage`, `SystemMessage`, `ToolMessage`
+
+- _Tools_ = ordinary python functions
+  - Docstring and type hints tell LLM what tool does and how to use
+  - `bind_tools()` tells LLM which tools it is allowed to request
+
+- `.invoke()` or `.stream()` = standard way to run LLM model or graph
+  - Invoke to return full result at end of control flow
+  - Stream to return results piece by piece as it is produced
+
+## LangGraph Concepts
+
+- _State_ = shared `TypedDict` record that every node reads/writes
+- _Node_ = python function that does one job
+  - Examples: call LLM, run tool, return updates to state
+- _Edge_ = fixed connection between nodes
+  - Conditional edge = function looks at state; chooses which node to run next
+- _START / END_ = makers defining where graph begins and where it stops
+- _Reducer_ = rule for updating state; replace old value or append to list
+- `builder.compile()` = checks structure, converts to something you can run
+- _Checkpointer_ = saves state after every step; provides memory across calls

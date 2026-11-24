@@ -33,7 +33,24 @@ See [Setting up Ollama](https://github.com/jah377/zettelkasten/blob/main/notes/l
 uv add langchain_ollama
 ```
 
+```{bash}
+# Must start server to download models
+ollama serve
+
+# 1B sufficient for chatbot demos
+ollama pull llama3.2:1b
+
+# Model for agent demo; 1B model cannot use tools
+ollama pull llama3.2:8b
+```
+
 ## LangSmith Studio Setup
+
+**LangSmith Studio** is a specialized visual IDE and development interface for
+building, testing, and ebugging complex AI agents and graph-based workflows.
+
+First, create a LangSmith account and API key (see [LangChain
+Docs](https://docs.langchain.com/langsmith/create-account-api-key)).
 
 Must install `langgraph` in virtual environment to use `LangSmith Studio` for
 viewing and testing agent.
@@ -43,7 +60,7 @@ uv add "langgraph-cli[inmem]"
 ```
 
 To run `langgraph`, must call `uv run langgraph dev` from inside one of the
-**module-{{i}}** subdirectories in the repo. Should see the following:
+**module-{{i}}/studio/** subdirectories in the repo. Should see the following:
 
 > - 🚀 API: http://127.0.0.1:2024
 > - 🎨 Studio UI: https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024
