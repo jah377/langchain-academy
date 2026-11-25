@@ -1,0 +1,71 @@
+---
+jupyter: python3
+---
+
+- [Google collab](https://colab.research.google.com/github/langchain-ai/langchain-academy/blob/main/module-2/state-schema.ipynb)
+- [Video lesson](https://academy.langchain.com/courses/take/intro-to-langgraph/lessons/58239426-lesson-1-state-schema)
+
+# State Schema
+
+A **state-schema** represents the structure and types of data that our graph
+will use. All nodes are expected to communicate with the schema. There are
+several ways to define this schema.
+
+## TypedDict
+
+`TypedDict` can be used to define the schema. They can be used by static
+type-checkers (eg. `mypy`) to catch errors. However, they are not enforced at
+runtime.
+
+```{python}
+from typing import Literal
+
+from typing_extensions import TypedDict
+
+
+class TypedDictState(TypedDict):
+    name: str
+    mood: Literal["happy", "sad"]
+```
+
+## MessagesState
+
+`MessagesState` is a built-in message-oriented state that includes special
+behavior needed to manage chat messages, such as appending new messages rather
+than simply replacing the list.
+
+## State as DataClass
+
+Alternatively, a `dataclass` can be used to define the schema. Unlike
+`TypedDict`, it is possible to define default values.
+
+```{python}
+from dataclasses import dataclass
+
+
+@dataclass
+class DataclassState:
+    name: str
+    mood: Literal["happy", "sad"]
+```
+
+## State as Pydantic Model
+
+States can also be defined using pydantic models to provide runtime validation.
+
+```{python}
+from pydantic import BaseModel, field_validator
+
+
+class PydanticState(BaseModel):
+    name: str
+    mood: Literal["happy", "sad"]
+
+    @field_validator("mood")
+    @classmethod
+    def validate_mood(cls, value):
+        """Mood must be either 'happy' or 'sad'."""
+        if value not in ["happy", "sad"]:
+            raise ValueError("Each mood must be either 'happy' or 'sad'")
+        return value
+```

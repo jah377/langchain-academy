@@ -1,0 +1,135 @@
+---
+jupyter: python3
+---
+
+- [Google collab](https://colab.research.google.com/github/langchain-ai/langchain-academy/blob/main/module-2/chatbot-external-memory.ipynb)
+- [Video lesson](https://academy.langchain.com/courses/take/intro-to-langgraph/lessons/58239440-lesson-6-chatbot-w-summarizing-messages-and-external-memory)
+
+# External Memory
+
+Previously, we compiled the graph with `checkpointer=MemorySaver()` to persist
+checkpoints to a single `thread_id`. However, it is possible to persist
+checkpoints indefinitely in an external database. LangGraph supports persisting
+checkpoints in PostGres and SQLite databases.
+
+# SQLite
+
+SQLite is a small, fast, and highly popular SQL database. `:memory:` is used to
+create an in-memory SQLite database. This is not necessary because the tutorial
+already includes an `example.db` file.
+
+```{python}
+import sqlite3
+from pathlib import Path
+
+from langgraph.checkpoint.sqlite import SqliteSaver
+
+db_path = Path("module-2/state_db/example.db")  # :memory:
+conn = sqlite3.connect(db_path, check_same_thread=False)
+memory_checkpointer = SqliteSaver(conn)
+```
+
+Next we will redefine our chatbot.
+
+```{python}
+from typing import Literal
+
+from langchain.chat_models import init_chat_model
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import SystemMessage
+from langgraph.graph import END, MessagesState
+
+
+class State(MessagesState):
+    summary: str
+
+
+# Define chatbot model
+model_provider = "ollama"
+model_name = "llama3.1:8b"
+llm: BaseChatModel = init_chat_model(model_name, model_provider=model_provider)
+
+
+# Define logic to call the model
+def call_model_node(state: State) -> State:
+    summary = state.get("summary", "")
+    if summary:
+        system_message = f"Summary of conversation earlier: {summary}"
+        messages = [SystemMessage(content=system_message)] + state["messages"]
+    else:
+        messages = state["messages"]
+    response = llm.invoke(messages)
+    return {"messages": response}
+
+
+def summarize_convo_node(state: State) -> State:
+    summary = state.get("summary", "")
+    if summary:
+        summary_message = (
+            f"Summary of conversation to date: {summary}"
+            "Extend summary by taking into account the new messages above:"
+        )
+    else:
+        summary_message = "Create a summary of the conversation above:"
+
+    messages = state["messages"] + [HumanMessage(content=summary_message)]
+    response = llm.invoke(messages)
+    delete_messages = [RemoveMessage(id=m.id) for m in state["messages"][:-2]]
+    return {"summary": response.content, "messages": delete_messages}
+
+
+def should_continue_edge(state: State) -> Literal["summarize_convo_node", END]:
+    if len(state["messages"]) > 6:
+        return "summarize_convo_node"
+    return END
+```
+
+```{python}
+from IPython.display import Image, display
+from langgraph.graph import START, StateGraph
+
+workflow = StateGraph(State)
+workflow.add_node("conversation", call_model_node)
+workflow.add_node(summarize_convo_node)
+
+workflow.add_edge(START, "conversation")
+workflow.add_conditional_edges("conversation", should_continue_edge)
+workflow.add_edge("summarize_convo_node", END)
+
+graph = workflow.compile(checkpointer=memory_checkpointer)
+display(Image(graph.get_graph().draw_mermaid_png()))
+```
+
+Let's invoke the graph several times.
+
+```{python}
+from langchain_core.messages import HumanMessage
+
+# We still need to create a thread
+config = {"configurable": {"thread_id": "1"}}
+
+# Start conversation
+input_message = HumanMessage(content="hi! I'm Lance")
+output = graph.invoke({"messages": [input_message]}, config)
+for m in output["messages"][-1:]:
+    m.pretty_print()
+
+input_message = HumanMessage(content="what's my name?")
+output = graph.invoke({"messages": [input_message]}, config)
+for m in output["messages"][-1:]:
+    m.pretty_print()
+
+input_message = HumanMessage(content="i like the 49ers!")
+output = graph.invoke({"messages": [input_message]}, config)
+for m in output["messages"][-1:]:
+    m.pretty_print()
+```
+
+Here we confirm that our State is saved locally. Because we used a database, we
+can re-start the notebook kernel an still load from SQLite DB on disk.
+
+```{python}
+config = {"configurable": {"thread_id": "1"}}
+graph_state = graph.get_state(config)
+graph_state
+```

@@ -1,0 +1,195 @@
+---
+jupyter: python3
+---
+
+- [Google collab](https://colab.research.google.com/github/langchain-ai/langchain-academy/blob/main/module-2/state-reducers.ipynb)
+- [Video lesson](https://academy.langchain.com/courses/take/intro-to-langgraph/lessons/58239428-lesson-2-state-reducers)
+
+# LangGraph State Reducers
+
+A **state reducer** in LangGraph defines how updates to a particular state key
+are combined with its existing value. Think of each state key as a channel.
+When a node returns an update, LangGraph needs to know what to do with that
+update. By default, LangGraph typically replaces the existing value.
+
+```{python}
+from langchain.chat_models import init_chat_model
+from langchain_core.language_models.chat_models import BaseChatModel
+
+model_provider = "ollama"
+model_name = "llama3.1:8b"
+llm: BaseChatModel = init_chat_model(model_name, model_provider=model_provider)
+```
+
+## Example: Overwriting State
+
+LangGraph does not know the preferred way to update the state. To demonstrate
+this we create a graph where `node_1` branches into `node_2` and `node_3`,
+which run in parallel and terminate at `END`.
+
+We expect an error since `node_2` and `node_3` will run in parallel and `END`
+will receive multiple values.
+
+```{python}
+from IPython.display import Image, display
+from langgraph.graph import END, START, StateGraph
+from typing_extensions import TypedDict
+
+
+class State(TypedDict):
+    foo: int
+
+
+def node_1(state):
+    print("---Node 1---")
+    return {"foo": state["foo"] + 1}
+
+
+def node_2(state):
+    print("---Node 2---")
+    return {"foo": state["foo"] + 1}
+
+
+def node_3(state):
+    print("---Node 3---")
+    return {"foo": state["foo"] + 1}
+
+
+# Build graph
+builder = StateGraph(State)
+builder.add_node("node_1", node_1)
+builder.add_node("node_2", node_2)
+builder.add_node("node_3", node_3)
+
+# Logic
+builder.add_edge(START, "node_1")
+builder.add_edge("node_1", "node_2")
+builder.add_edge("node_1", "node_3")
+builder.add_edge("node_2", END)
+builder.add_edge("node_3", END)
+
+# Add
+graph = builder.compile()
+
+# View
+display(Image(graph.get_graph().draw_mermaid_png()))
+```
+
+```{python}
+from langgraph.errors import InvalidUpdateError
+
+try:
+    graph.invoke({"foo": 1})
+except InvalidUpdateError as e:
+    print(f"InvalidUpdateError occurred: {e}")
+```
+
+## Example: Reducer
+
+Alternatively, we can update `State` to append new values to `State.foo`.
+
+```{python}
+from operator import add
+from typing import Annotated
+
+
+class State(TypedDict):
+    foo: Annotated[list[int], add]
+
+
+def node_1(state):
+    print("---Node 1---")
+    return {"foo": [state["foo"][-1] + 1]}
+
+
+def node_2(state):
+    print("---Node 2---")
+    return {"foo": [state["foo"][-1] + 1]}
+
+
+def node_3(state):
+    print("---Node 3---")
+    return {"foo": [state["foo"][-1] + 1]}
+
+
+# Build graph
+builder = StateGraph(State)
+builder.add_node("node_1", node_1)
+builder.add_node("node_2", node_2)
+builder.add_node("node_3", node_3)
+
+# Logic
+builder.add_edge(START, "node_1")
+builder.add_edge("node_1", "node_2")
+builder.add_edge("node_1", "node_3")
+builder.add_edge("node_2", END)
+builder.add_edge("node_3", END)
+
+# Add
+graph = builder.compile()
+```
+
+```{python}
+from langgraph.errors import InvalidUpdateError
+
+try:
+    out = graph.invoke({"foo": [1]})
+    print(out)
+except InvalidUpdateError as e:
+    print(f"InvalidUpdateError occurred: {e}")
+```
+
+## Example: Custom Reducers
+
+```{python}
+from langgraph.graph import MessagesState
+
+
+class CustomMessageState(MessagesState):
+    added_key_1: str
+    added_key_2: str
+```
+
+# LangGraph Message Reducers
+
+The `add_messages` reducer appends a new message to an existing list of
+messages. If a message `id` is defined, it is possible to overwrite an existing
+message.
+
+```{python}
+from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.graph.message import add_messages
+
+initial_messages = [
+    AIMessage(content="How can I assist you?", name="llm", id="1"),
+    HumanMessage(content="What apples?", name="human", id="2"),
+]
+
+# Same `id` as `HumanMessage` in `initial_messages` -> should overwrite
+new_message = HumanMessage(content="What are whales?", name="human", id="2")
+add_messages(initial_messages, new_message)
+```
+
+The `RemoveMessage` class can be used to drop messages containing the same
+`id` value as message (or message kwargs).
+
+```{python}
+from pprint import pprint
+
+from langchain_core.messages import RemoveMessage
+
+messages = [
+    AIMessage("Hi.", name="bot", id="1"),
+    HumanMessage("Hi.", name="bot", id="2"),
+    AIMessage("What do you want?", name="bot", id="3"),
+    HumanMessage("Nothing", name="bot", id="3"),
+]
+
+# Delete last two messages
+messages_to_delete = [RemoveMessage(id=m.id) for m in messages[2:]]
+pprint(f"{messages_to_delete=}")
+
+updated_messages = add_messages(messages, messages_to_delete)
+print()
+pprint(f"{updated_messages=}")
+```

@@ -1,0 +1,97 @@
+---
+jupyter: python3
+---
+
+- [Google collab](https://colab.research.google.com/github/langchain-ai/langchain-academy/blob/main/module-2/multiple-schemas.ipynb)
+- [Video lesson](https://academy.langchain.com/courses/take/intro-to-langgraph/lessons/58239434-lesson-3-multiple-schemas)
+
+# Multiple Schemas
+
+Previously, all graph nodes communicated with a single State schema. However,
+it is possible to use multiple schemas in a single graph. This approach should
+be considered when:
+
+1. **Separation of concerns**. Not all nodes need all State info. Keeps nodes
+   and subgraphs simpler and easier to understand
+2. **Finer control**. Internal nodes may pass info that is _not required_ by
+   the graph's input and output.
+3. **Clearer state contracts**. Each part of the graph can explicitly define
+   _what data it consumes and produces_.
+
+For example, different parts of a Customer-Support Agent need different
+information.
+
+```{python}
+from typing_extensions import TypedDict
+
+
+class SupportState(TypedDict):
+    messages: list[str]
+    customer_id: str
+    issue: str
+    resolution: str
+    escalation_status: str
+
+
+class BillingState(TypedDict):
+    customer_id: str
+    invoice_id: str
+    payment_status: str
+
+
+class TechnicalState(TypedDict):
+    issue_type: str
+    logs: list[str]
+    diagnostic_result: str
+```
+
+# Example
+
+Perhaps we do not want to reveal all State information to the User. Here, we
+define `OverallState` that acts is an _internal_ state. The `InputState` and
+`OutputState` perform filtering on which keys are permitted on the input and
+output of the graph. `OverallState.notes` is never revealed to the User.
+
+```{python}
+from IPython.display import Image, display
+from langgraph.graph import END, START, StateGraph
+
+
+class OverallState(TypedDict):
+    question: str
+    answer: str
+    notes: str
+
+
+class InputState(TypedDict):
+    question: str
+
+
+class OutputState(TypedDict):
+    answer: str
+
+
+def thinking_node(state: InputsState) -> OverallState:
+    return {"answer": "bye", "notes": "... his name is Lance"}
+
+
+def answer_node(state: OverallState) -> OutputState:
+    return {"answer": "bye Lance"}
+
+
+graph = StateGraph(OverallState, input_schema=InputState, output_schema=OutputState)
+graph.add_node("answer_node", answer_node)
+graph.add_node("thinking_node", thinking_node)
+graph.add_edge(START, "thinking_node")
+graph.add_edge("thinking_node", "answer_node")
+graph.add_edge("answer_node", END)
+graph = graph.compile()
+
+display(Image(graph.get_graph().draw_mermaid_png()))
+```
+
+We see that the `OutputState` constrains the output to only the `answer` key.
+
+```{python}
+graph.invoke({"question": "hi"})
+```

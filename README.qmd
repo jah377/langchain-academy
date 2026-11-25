@@ -31,6 +31,7 @@ See [Setting up Ollama](https://github.com/jah377/zettelkasten/blob/main/notes/l
 
 ```{bash}
 uv add langchain_ollama
+uv add transformers # required for `trim_messages` in Module-2
 ```
 
 ```{bash}
