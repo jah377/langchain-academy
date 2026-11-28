@@ -1,0 +1,190 @@
+---
+jupyter: python3
+---
+
+- [Google collab](https://colab.research.google.com/github/langchain-ai/langchain-academy/blob/main/module-3/edit-state-human-feedback.ipynb)
+- [Video lesson](https://academy.langchain.com/courses/take/intro-to-langgraph/lessons/58239520-lesson-3-editing-state-and-human-feedback)
+
+# Editing Graph State
+
+Previously, we showed that breakpoints support user approval. Here, we show how
+to directly edit the graph state and insert human feedback.
+
+# Example: Edit State
+
+Previously, we added human-in-the-loop to confirm the execution of the
+`ToolNode`. Here, we will add human-in-the-loop to modify the initial request
+before passing through the entire graph.
+
+## Define Model
+
+```{python}
+from langchain.chat_models import init_chat_model
+from langchain_core.language_models.chat_models import BaseChatModel
+
+model_provider = "ollama"
+model_name = "llama3.1:8b"
+llm: BaseChatModel = init_chat_model(model_name, model_provider=model_provider)
+```
+
+## Define Graph
+
+Instead of `interrupt_before=["tools"]`, we will compile with
+`interrupt_before=["assistant"]` to edit the `HumanMessage` before passing
+through the graph.
+
+```{python}
+from IPython.display import Image, display
+from langchain_core.messages import SystemMessage
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import START, MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode, tools_condition
+
+
+def multiply(a: int, b: int) -> int:
+    """Multiply a and b.
+
+    Args:
+        a: first int
+        b: second int
+    """
+    return a * b
+
+
+# This will be a tool
+def add(a: int, b: int) -> int:
+    """Adds a and b.
+
+    Args:
+        a: first int
+        b: second int
+    """
+    return a + b
+
+
+def divide(a: int, b: int) -> float:
+    """Divide a by b.
+
+    Args:
+        a: first int
+        b: second int
+    """
+    return a / b
+
+
+tools = [add, multiply, divide]
+llm_with_tools = llm.bind_tools(tools)
+
+
+# System message
+sys_msg = SystemMessage(
+    content="You are a helpful assistant tasked with performing arithmetic on a set of inputs."
+)
+
+
+# Node
+def assistant(state: MessagesState):
+    return {"messages": [llm_with_tools.invoke([sys_msg] + state["messages"])]}
+
+
+# Graph
+builder = StateGraph(MessagesState)
+
+# Define nodes: these do the work
+builder.add_node("assistant", assistant)
+builder.add_node("tools", ToolNode(tools))
+
+# Define edges: these determine the control flow
+builder.add_edge(START, "assistant")
+builder.add_conditional_edges(
+    "assistant",
+    # If the latest message (result) from assistant is a tool call -> tools_condition routes to tools
+    # If the latest message (result) from assistant is a not a tool call -> tools_condition routes to END
+    tools_condition,
+)
+builder.add_edge("tools", "assistant")
+
+memory = MemorySaver()
+graph = builder.compile(interrupt_before=["assistant"], checkpointer=memory)
+
+# Show
+display(Image(graph.get_graph(xray=True).draw_mermaid_png()))
+```
+
+## Confirm Chat-Model Did Not Respond
+
+```{python}
+from langchain_core.messages import HumanMessage
+
+initial_input = {"messages": HumanMessage(content="Multiply 2 and 3")}
+thread = {"configurable": {"thread_id": "1"}}
+
+for event in graph.stream(initial_input, thread, stream_mode="values"):
+    event["messages"][-1].pretty_print()
+```
+
+Here, we directly apply a state update by appending a new message to the
+`State`.
+
+```{python}
+graph.update_state(
+    thread, {"messages": [HumanMessage(content="No, actually multiply 3 and 3!")]}
+)
+
+new_state = graph.get_state(thread).values
+for m in new_state["messages"]:
+    m.pretty_print()
+```
+
+Again, we can use `graph.stream(None, ...)` to execute the rest of the graph.
+
+```{python}
+for event in graph.stream(None, thread, stream_mode="values"):
+    event["messages"][-1].pretty_print()
+```
+
+# Graph with Human Feedback
+
+Human-in-the-loop can be incorporated into a graph as a separate node.
+
+```{python}
+def human_feedback(state: MessagesState):
+    pass
+
+
+# Graph
+builder = StateGraph(MessagesState)
+
+builder.add_node("assistant", assistant)
+builder.add_node("tools", ToolNode(tools))
+builder.add_node("human_feedback", human_feedback)
+
+builder.add_edge(START, "human_feedback")
+builder.add_edge("human_feedback", "assistant")
+builder.add_conditional_edges("assistant", tools_condition)
+builder.add_edge("tools", "human_feedback")
+
+memory = MemorySaver()
+graph = builder.compile(interrupt_before=["human_feedback"], checkpointer=memory)
+
+display(Image(graph.get_graph().draw_mermaid_png()))
+```
+
+```{python}
+inital_input = {"messages": "Multiple 2 and 3"}
+thread = {"configurable": {"thread_id": "5"}}
+
+# Run graph until the first interruption
+for event in graph.stream(initial_input, thread, stream_mode="values"):
+    event["messages"][-1].pretty_print()
+
+# Get user input
+user_input = input("Tell me how you want to update the state: ")
+
+# We now update the state as if we are the `human_feedback` node
+graph.update_state(thread, {"messages": user_input}, as_node="human_feedback")
+
+# Continue the graph execution
+for event in graph.stream(None, thread, stream_mode="values"):
+    event["messages"][-1].pretty_print()
+```
